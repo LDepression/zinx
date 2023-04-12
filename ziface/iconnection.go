@@ -22,7 +22,7 @@ type IConnection interface {
 	//获取当前连接模块的连接ID
 	GetConnID() uint32
 	//获取远程客户端的TCP的IP port
-	RemoteAddr()
+	RemoteAddr() net.Addr
 
 	//发送数据
 	Send(data []byte) error

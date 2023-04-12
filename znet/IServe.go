@@ -9,9 +9,9 @@
 package znet
 
 import (
-	"errors"
 	"fmt"
 	"net"
+	"zinx/utils"
 	"zinx/ziface"
 )
 
@@ -26,20 +26,14 @@ type Server struct {
 	IP string
 	//服务器监听的端口
 	Port int
-}
 
-func CallBackToClient(conn *net.TCPConn, data []byte, cnt int) error {
-	//回显的业务
-	fmt.Println("[Conn Handle] CallBackToClient...")
-	if _, err := conn.Write(data[:cnt]); err != nil {
-		fmt.Println("write back buf err", err)
-		return errors.New("CallBackToClient error")
-	}
-	return nil
+	//当前的Server添加一个router
+	Router ziface.IRouter
 }
 
 // 启动服务器的方法
 func (s *Server) Start() {
+	fmt.Printf("[ZINX] Server Name :%s, listenner at IP: :%s, port :%d", utils.GlobalObject.Name, utils.GlobalObject.Host, utils.GlobalObject.TcpPort)
 	fmt.Printf("[Start] Server Listenner at Ip :%s , Port is %d, is starting \n", s.IP, s.Port)
 
 	go func() {
@@ -68,7 +62,7 @@ func (s *Server) Start() {
 			}
 
 			//将处理新链接的业务方法和Conn进行绑定,得到我们得到连接模块
-			dealConn := NewConnection(conn, cid, CallBackToClient)
+			dealConn := NewConnection(conn, cid, s.Router)
 			cid++
 			//启动当前连接业务处理
 			go dealConn.Start()
@@ -92,12 +86,19 @@ func (s *Server) Serve() {
 
 }
 
+// 添加一个路由
+func (s *Server) AddRouter(router ziface.IRouter) {
+	s.Router = router
+	fmt.Println("Add Router Succ!!")
+}
+
 func NewServer(name string) ziface.IServer {
 	s := &Server{
-		Name:      name,
+		Name:      utils.GlobalObject.Name,
 		IPVersion: "tcp4",
-		IP:        "0.0.0.0",
-		Port:      8999,
+		IP:        utils.GlobalObject.Host,
+		Port:      utils.GlobalObject.TcpPort,
+		Router:    nil,
 	}
 	return s
 }
