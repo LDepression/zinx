@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"zinx/utils"
 	"zinx/ziface"
 )
 
@@ -25,6 +26,8 @@ type Connection struct {
 	//当前连接的状态
 	isClosed bool
 
+	//无缓冲通道，用于读，写Goroutine之间通信
+	msgChan chan []byte
 	//告知当前连接已经退出的的channel
 	ExitChan  chan bool
 	HandleMsg ziface.IMsgHandler
@@ -38,6 +41,7 @@ func NewConnection(conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandl
 		ConnID:    connID,
 		isClosed:  false,
 		HandleMsg: msgHandler,
+		msgChan:   make(chan []byte),
 		ExitChan:  make(chan bool, 1),
 	}
 	return c
@@ -93,9 +97,37 @@ func (c *Connection) StartReader() {
 			conn: c,
 			msg:  msg,
 		}
+		if utils.GlobalObject.WorkerPoolSize > 0 {
+			c.HandleMsg.SendMsgToQueue(&req)
+		} else {
+			//根据绑定好的MsgID找到处理好的api业务 执行
+			go c.HandleMsg.DoMsgHandler(&req)
 
-		//根据绑定好的MsgID找到处理好的api业务 执行
-		go c.HandleMsg.DoMsgHandler(&req)
+		}
+	}
+}
+
+/*
+写消息Goroutine，用户将消息发送给客户端
+*/
+func (c *Connection) StartWriter() {
+	fmt.Println("[Writer Goroutine is running] ")
+	defer fmt.Println(c.RemoteAddr().String(), "conn has Exited")
+
+	//不断阻塞，等待chan的消息，从而发给客户端
+
+	for {
+		select {
+		case data := <-c.msgChan:
+			//有数据的话，就要写给客户端
+			if _, err := c.Conn.Write(data); err != nil {
+				fmt.Println("send Msg err", err)
+				return
+			}
+		case <-c.ExitChan:
+			//代表reader已经退出了，此时Writer也要退出
+			return
+		}
 	}
 }
 
@@ -114,10 +146,7 @@ func (c *Connection) SendMsg(MsgID uint32, data []byte) error {
 	}
 
 	//将数据发送给客户端
-	if _, err := c.Conn.Write(binaryMsg); err != nil {
-		fmt.Println("write msg id =", MsgID)
-		return errors.New("write error")
-	}
+	c.msgChan <- binaryMsg
 	return nil
 }
 
@@ -129,6 +158,7 @@ func (c *Connection) Start() {
 	go c.StartReader()
 
 	//todo:写业务
+	go c.StartWriter()
 }
 
 // 停止工作
@@ -141,8 +171,10 @@ func (c *Connection) Stop() {
 	c.isClosed = true
 
 	//挂麻痹socket连接
+	c.ExitChan <- true
 	c.Conn.Close()
 	close(c.ExitChan)
+	close(c.msgChan)
 }
 
 // 获取当前连接绑定的socket conn
