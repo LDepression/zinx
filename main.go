@@ -32,8 +32,9 @@ func main() {
 	y := Y{X: x}
 	y.Set(4)
 	fmt.Println(y.Get())
+	fmt.Println(x.Get())
 
 	(*Y).Set(&y, 3)
 
-	Y.Set(y, 3)
+	//Y.Set(y, 3)
 }

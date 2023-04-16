@@ -29,6 +29,8 @@ type Server struct {
 
 	//当前消息管理模块,是用来绑定MsgID与对应处理关系业务API的
 	MsgHandler ziface.IMsgHandler
+	//该server的连接管理器
+	ConnMgr ziface.IConnManager
 }
 
 // 启动服务器的方法
@@ -61,9 +63,14 @@ func (s *Server) Start() {
 				fmt.Println("Accept,err", err)
 				continue
 			}
-
+			if s.ConnMgr.Len() >= utils.GlobalObject.MaxConn {
+				//给用户响应一个错误：超出最大连接数
+				fmt.Println("too Many Connections")
+				conn.Close()
+				continue
+			}
 			//将处理新链接的业务方法和Conn进行绑定,得到我们得到连接模块
-			dealConn := NewConnection(conn, cid, s.MsgHandler)
+			dealConn := NewConnection(s, conn, cid, s.MsgHandler)
 			cid++
 			//启动当前连接业务处理
 			go dealConn.Start()
@@ -74,7 +81,8 @@ func (s *Server) Start() {
 // 停止服务器的方法
 func (s *Server) Stop() {
 	//todo: 将一些服务器的资源,状态或者一些已经开辟的连接信息进行停止或者回收
-
+	s.ConnMgr.ClearConn()
+	fmt.Println("serveName ", s.Name, "stop")
 }
 
 // 运行服务器的方法
@@ -93,6 +101,9 @@ func (s *Server) AddRouter(MsgID uint32, router ziface.IRouter) {
 	fmt.Println("Add Router Succ!!")
 }
 
+func (s *Server) GetConnMgr() ziface.IConnManager {
+	return s.ConnMgr
+}
 func NewServer(name string) ziface.IServer {
 	s := &Server{
 		Name:       utils.GlobalObject.Name,
@@ -100,6 +111,7 @@ func NewServer(name string) ziface.IServer {
 		IP:         utils.GlobalObject.Host,
 		Port:       utils.GlobalObject.TcpPort,
 		MsgHandler: NewMsgHandle(),
+		ConnMgr:    NewConnManager(),
 	}
 	return s
 }

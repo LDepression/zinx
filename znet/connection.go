@@ -18,6 +18,8 @@ import (
 )
 
 type Connection struct {
+	//关联的Serve
+	Serve ziface.IServer
 	//当前连接的socket TCP套接字
 	Conn *net.TCPConn
 	//连接的ID
@@ -35,8 +37,9 @@ type Connection struct {
 
 //初始化连接模块的方法
 
-func NewConnection(conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandler) *Connection {
+func NewConnection(server ziface.IServer, conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandler) *Connection {
 	c := &Connection{
+		Serve:     server,
 		Conn:      conn,
 		ConnID:    connID,
 		isClosed:  false,
@@ -44,6 +47,7 @@ func NewConnection(conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandl
 		msgChan:   make(chan []byte),
 		ExitChan:  make(chan bool, 1),
 	}
+	c.Serve.GetConnMgr().Add(c)
 	return c
 }
 
@@ -102,7 +106,6 @@ func (c *Connection) StartReader() {
 		} else {
 			//根据绑定好的MsgID找到处理好的api业务 执行
 			go c.HandleMsg.DoMsgHandler(&req)
-
 		}
 	}
 }
@@ -173,6 +176,9 @@ func (c *Connection) Stop() {
 	//挂麻痹socket连接
 	c.ExitChan <- true
 	c.Conn.Close()
+
+	//将当前的Conn从Mgr中清理掉
+	c.Serve.GetConnMgr().Remove(c)
 	close(c.ExitChan)
 	close(c.msgChan)
 }
